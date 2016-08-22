@@ -65,7 +65,7 @@ HELPER_IDENTIFIER = com.mbs.PrivilegedHelper
 
 plist.commands += $(COPY) $$PWD/Info.plist $${INFO_PLIST_PATH};
 plist.commands += /usr/libexec/PlistBuddy -c \"Set :CFBundleIdentifier com.mbs.$${TARGET}\" $${INFO_PLIST_PATH};
-plist.commands += /usr/libexec/PlistBuddy -c \'Set :SMPrivilegedExecutables:$${HELPER_IDENTIFIER} 'anchor apple generic and identifier \\\"$${HELPER_IDENTIFIER}\\\" and (certificate leaf[field.1.2.840.113635.100.6.1.9] /* exists */ or certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = $${CERT_OU})'\' $${INFO_PLIST_PATH};
+plist.commands += /usr/libexec/PlistBuddy -c \'Set :SMPrivilegedExecutables:$${HELPER_IDENTIFIER} 'anchor apple generic and identifier \\\"$${HELPER_IDENTIFIER}\\\" and (certificate leaf[field.1.2.840.113635.100.6.1.9] /* exists */ or certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = \\\"$${CERT_OU}\\\")'\' $${INFO_PLIST_PATH};
 first.depends = $(first) plist
 export(first.depends)
 export(plist.commands)
