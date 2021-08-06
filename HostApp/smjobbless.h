@@ -28,8 +28,10 @@
 #include <CoreFoundation/CFString.h>
 #include <CoreFoundation/CFError.h>
 
+enum HelperToolResult { HT_INSTALL_FAILED, HT_INSTALL_NO_NEEDED, HT_INSTALL_DONE};
+
 bool blessHelperWithLabel(CFStringRef label, CFErrorRef* error);
-bool installPrivilegedHelperTool();
+HelperToolResult installPrivilegedHelperTool();
 int runExampleTool(char *szStdOutBuffer, char *szStdErrBuffer, int iBuffersSize);
 
 #endif // SMJOBBLESS

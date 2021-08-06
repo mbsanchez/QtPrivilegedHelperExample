@@ -35,10 +35,10 @@ QMAKE_LFLAGS += -F /System/Library/Frameworks/Security.framework/ -sectcreate __
 LIBS += -framework Security -framework Cocoa
 
 CONFIG(debug, debug|release) {
-    DESTDIR = ../
+    DESTDIR = $$clean_path($$OUT_PWD/../..)
 }
 CONFIG(release, debug|release) {
-    DESTDIR = ../
+    DESTDIR = $$clean_path($$OUT_PWD/../..)
 }
 
 SOURCES += main.cpp
@@ -57,7 +57,9 @@ BUNDLEID = $${TARGET}
 
 HOSTAPP_IDENTIFIER = com.mbs.HostApp
 
-QMAKE_PRE_LINK += /usr/libexec/PlistBuddy -c \'Set :SMAuthorizedClients:0 'anchor apple generic and identifier \\\"$${HOSTAPP_IDENTIFIER}\\\" and (certificate leaf[field.1.2.840.113635.100.6.1.9] /* exists */ or certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = $${CERT_OU})'\' $$PWD/PrivilegedHelper-Info.plist;
+QMAKE_PRE_LINK += /usr/libexec/PlistBuddy -c \'Set :SMAuthorizedClients:0 'anchor apple generic and identifier \\\"$${HOSTAPP_IDENTIFIER}\\\" and (certificate leaf[field.1.2.840.113635.100.6.1.9] /* exists */ or certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = \\\"$${CERT_OU}\\\")'\' $$PWD/PrivilegedHelper-Info.plist$$escape_expand(\n\t)
+QMAKE_PRE_LINK += /usr/libexec/PlistBuddy -c \'Delete :MachServices\' $$PWD/PrivilegedHelper-Launchd.plist$$escape_expand(\n\t)
+QMAKE_PRE_LINK += /usr/libexec/PlistBuddy -c \'Add :MachServices:$${TARGET} bool YES\' $$PWD/PrivilegedHelper-Launchd.plist$$escape_expand(\n\t)
 
 QMAKE_CFLAGS_RELEASE = $$QMAKE_CFLAGS_RELEASE_WITH_DEBUGINFO
 QMAKE_CXXFLAGS_RELEASE = $$QMAKE_CXXFLAGS_RELEASE_WITH_DEBUGINFO
@@ -69,10 +71,5 @@ codesigner.commands += dsymutil $${DESTDIR}$${TARGET} -o $${DESTDIR}$${TARGET}.d
 
 # Sign the application, using the provided entitlements
 CODESIGN_ALLOCATE_PATH=$$system(xcrun -find codesign_allocate)
-codesigner.commands += export CODESIGN_ALLOCATE=$${CODESIGN_ALLOCATE_PATH};
-codesigner.commands += codesign --force --sign $${CERTSHA1} -r=\'designated => anchor apple generic and identifier \"$${BUNDLEID}\" and ((cert leaf[field.1.2.840.113635.100.6.1.9] exists) or (certificate 1[field.1.2.840.113635.100.6.2.6] exists and certificate leaf[field.1.2.840.113635.100.6.1.13] exists and certificate leaf[subject.OU]=$${CERT_OU}))\' --timestamp=none $${DESTDIR}$${TARGET};
-
-first.depends = $(first) codesigner
-export(first.depends)
-export(codesigner.commands)
-QMAKE_EXTRA_TARGETS += first codesigner
+QMAKE_POST_LINK += export CODESIGN_ALLOCATE=$${CODESIGN_ALLOCATE_PATH}$$escape_expand(\n\t)
+QMAKE_POST_LINK += codesign --force --sign $${CERTSHA1} -r=\'designated => anchor apple generic and identifier \"$${BUNDLEID}\" and ((cert leaf[field.1.2.840.113635.100.6.1.9] exists) or (certificate 1[field.1.2.840.113635.100.6.2.6] exists and certificate leaf[field.1.2.840.113635.100.6.1.13] exists and certificate leaf[subject.OU]=\"$${CERT_OU}\"))\' --timestamp=none $${DESTDIR}/$${TARGET}$$escape_expand(\n\t)

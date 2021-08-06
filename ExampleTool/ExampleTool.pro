@@ -32,10 +32,10 @@ CONFIG -= app_bundle
 TEMPLATE = app
 
 CONFIG(debug, debug|release) {
-    DESTDIR = ../
+    DESTDIR = $$clean_path($$OUT_PWD/../..)
 }
 CONFIG(release, debug|release) {
-    DESTDIR = ../
+    DESTDIR = $$clean_path($$OUT_PWD/../..)
 }
 
 SOURCES += main.cpp
@@ -51,14 +51,9 @@ QMAKE_OBJECTIVE_CFLAGS_RELEASE =  $$QMAKE_OBJECTIVE_CFLAGS_RELEASE_WITH_DEBUGINF
 QMAKE_LFLAGS_RELEASE = $$QMAKE_LFLAGS_RELEASE_WITH_DEBUGINFO
 
 # Extract debug symbols
-codesigner.commands += dsymutil $${DESTDIR}$${TARGET} -o $${DESTDIR}$${TARGET}.dSYM;
+QMAKE_POST_LINK += dsymutil $${DESTDIR}/$${TARGET} -o $${DESTDIR}/$${TARGET}.dSYM$$escape_expand(\n\t)
 
 # Sign the application, using the provided entitlements
 CODESIGN_ALLOCATE_PATH=$$system(xcrun -find codesign_allocate)
-codesigner.commands += export CODESIGN_ALLOCATE=$${CODESIGN_ALLOCATE_PATH};
-codesigner.commands += codesign --force --sign $${CERTSHA1} -r=\'designated => anchor apple generic and identifier \"$${BUNDLEID}\" and ((cert leaf[field.1.2.840.113635.100.6.1.9] exists) or (certificate 1[field.1.2.840.113635.100.6.2.6] exists and certificate leaf[field.1.2.840.113635.100.6.1.13] exists and certificate leaf[subject.OU]=$${CERT_OU}))\' --timestamp=none $${DESTDIR}$${TARGET};
-
-first.depends = $(first) codesigner
-export(first.depends)
-export(codesigner.commands)
-QMAKE_EXTRA_TARGETS += first codesigner
+QMAKE_POST_LINK += export CODESIGN_ALLOCATE=$${CODESIGN_ALLOCATE_PATH}$$escape_expand(\n\t)
+QMAKE_POST_LINK += codesign --force --sign $${CERTSHA1} -r=\'designated => anchor apple generic and identifier \"$${BUNDLEID}\" and ((cert leaf[field.1.2.840.113635.100.6.1.9] exists) or (certificate 1[field.1.2.840.113635.100.6.2.6] exists and certificate leaf[field.1.2.840.113635.100.6.1.13] exists and certificate leaf[subject.OU]=\"$${CERT_OU}\"))\' --timestamp=none $${DESTDIR}/$${TARGET}$$escape_expand(\n\t)

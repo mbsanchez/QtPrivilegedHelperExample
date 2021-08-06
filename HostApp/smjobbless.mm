@@ -33,6 +33,7 @@
 #include <Security/SecStaticCode.h>
 #include <Security/SecCodeHost.h>
 #include <Security/SecRequirement.h>
+#include <Foundation/Foundation.h>
 #include <syslog.h>
 #include <CoreFoundation/CFDictionary.h>
 #include <CoreFoundation/CFError.h>
@@ -51,37 +52,37 @@ bool blessHelperWithLabel(CFStringRef label, CFErrorRef* error)
 {
     bool result = false;
 
-    AuthorizationItem authItem		= { kSMRightBlessPrivilegedHelper, 0, NULL, 0 };
+    AuthorizationItem authItem		= { kSMRightBlessPrivilegedHelper, 0, Nil, 0 };
     AuthorizationRights authRights	= { 1, &authItem };
     AuthorizationFlags flags		=	kAuthorizationFlagDefaults				|
                                         kAuthorizationFlagInteractionAllowed	|
                                         kAuthorizationFlagPreAuthorize			|
                                         kAuthorizationFlagExtendRights;
-    AuthorizationRef authRef = NULL;
+    AuthorizationRef authRef = Nil;
 
     /* Obtain the right to install privileged helper tools (kPRIVILEGED_HELPER_LABEL). */
     OSStatus status = AuthorizationCreate(&authRights, kAuthorizationEmptyEnvironment, flags, &authRef);
     if (status != errAuthorizationSuccess)
     {
         qCritical() << QObject::tr("Failed to create AuthorizationRef, return code %1").arg( (long)status);
-    } else
+    }
+    else
     {
         /* This does all the work of verifying the helper tool against the application
          * and vice-versa. Once verification has passed, the embedded launchd.plist
          * is extracted and placed in /Library/LaunchDaemons and then loaded. The
          * executable is placed in /Library/PrivilegedHelperTools.
          */
+        qDebug() << "Blessing the helper tool: " << label;
         result = SMJobBless(kSMDomainSystemLaunchd, label, authRef, error);
+        AuthorizationFree(authRef, kAuthorizationFlagDefaults);
     }
-
-    AuthorizationFree(authRef, kAuthorizationFlagDefaults);
-
 
     return result;
 }
 
 // this function is adapted from https://bitbucket.org/sinbad/privilegedhelperexample
-bool installPrivilegedHelperTool()
+HelperToolResult installPrivilegedHelperTool()
 {
     // This uses SMJobBless to install a tool in /Library/PrivilegedHelperTools which is
     // run by launchd instead of us, with elevated privileges. This can then be used to do
@@ -98,46 +99,46 @@ bool installPrivilegedHelperTool()
     // the SMJobBless structure doesn't validate that the caller at runtime is the right application.
     // However, the privilegehelper validates the signature of the calling app and the command to execute.
 
-    CFErrorRef  error = NULL;
-    CFDictionaryRef	installedHelperJobData 	= SMJobCopyDictionary(kSMDomainSystemLaunchd, CFSTR(kPRIVILEGED_HELPER_LABEL));
+    CFErrorRef  error = Nil;
     bool needToInstall = true;
 
-    if (installedHelperJobData)
+    qInfo() << "checking for installed tools";
+    if ([[NSFileManager defaultManager] fileExistsAtPath: @"/Library/PrivilegedHelperTools/" kPRIVILEGED_HELPER_LABEL])
     {
-        // This code vVerify wheather or not the PrivilegedHelper is installed as a privileged helper tool
-        CFArrayRef arguments = (CFArrayRef)CFDictionaryGetValue (installedHelperJobData, CFSTR("ProgramArguments"));
-        CFStringRef installedPath = (CFStringRef)CFArrayGetValueAtIndex(arguments, 0);
-        CFURLRef installedPathURL = CFURLCreateWithString(kCFAllocatorDefault, installedPath, NULL);
+        CFStringRef installedPath = CFSTR("/Library/PrivilegedHelperTools/" kPRIVILEGED_HELPER_LABEL);
+        CFURLRef installedPathURL = CFURLCreateWithString(kCFAllocatorDefault, installedPath, Nil);
         CFDictionaryRef installedInfoPlist = CFBundleCopyInfoDictionaryForURL(installedPathURL);
         CFStringRef installedBundleVersion = (CFStringRef)CFDictionaryGetValue (installedInfoPlist, CFSTR("CFBundleVersion"));
-        int installedVersion = CFStringGetIntValue(installedBundleVersion);
+        double installedVersion = CFStringGetDoubleValue(installedBundleVersion);
 
-        qInfo() << "installedVersion: " << (long)installedVersion;
+        qInfo() << "installedVersion: " << installedVersion;
 
         CFBundleRef appBundle = CFBundleGetMainBundle();
         CFURLRef appBundleURL = CFBundleCopyBundleURL(appBundle);
 
         qInfo() << "appBundleURL: " << appBundleURL;
 
-        CFStringRef helperToolPath = CFStringCreateWithFormat(kCFAllocatorDefault, NULL, CFSTR("Contents/Library/LaunchServices/%@"), CFSTR(kPRIVILEGED_HELPER_LABEL));
+        CFStringRef helperToolPath = CFStringCreateWithFormat(kCFAllocatorDefault, Nil, CFSTR("Contents/Library/LaunchServices/%@"), CFSTR(kPRIVILEGED_HELPER_LABEL));
         CFURLRef currentHelperToolURL = CFURLCreateCopyAppendingPathComponent(kCFAllocatorDefault, appBundleURL, helperToolPath, false);
 
         qInfo() << "currentHelperToolURL: " << currentHelperToolURL;
 
         CFDictionaryRef currentInfoPlist = CFBundleCopyInfoDictionaryForURL(currentHelperToolURL);
         CFStringRef currentBundleVersion = (CFStringRef)CFDictionaryGetValue (currentInfoPlist, CFSTR("CFBundleVersion"));
-        int currentVersion = CFStringGetIntValue(currentBundleVersion);
+        double currentVersion = CFStringGetDoubleValue(currentBundleVersion);
 
-        qInfo() << "currentVersion: " << currentVersion;
+        qInfo() << "futureVersion: " << currentVersion;
 
-        if ( currentVersion == installedVersion )
+        if ( currentVersion <= installedVersion )
         {
             SecRequirementRef requirement;
             OSStatus stErr;
-            CFStringRef reqStr = CFStringCreateWithFormat(kCFAllocatorDefault, NULL, CFSTR("identifier %@ and certificate leaf[subject.CN] = \"%@\""),
+            CFStringRef reqStr = CFStringCreateWithFormat(kCFAllocatorDefault, Nil, CFSTR("identifier \"%@\" and certificate leaf[subject.CN] = \"%@\""),
                                                           CFSTR(kPRIVILEGED_HELPER_LABEL), CFSTR(kSigningCertCommonName));
 
             stErr = SecRequirementCreateWithString(reqStr, kSecCSDefaultFlags, &requirement );
+
+            //stErr = SecRequirementCreateWithString((CFStringRef)[NSString stringWithFormat:@"identifier %@ and certificate leaf[subject.CN] = \"%@\"", @kPRIVILEGED_HELPER_LABEL, @kSigningCertCommonName], kSecCSDefaultFlags, &requirement );
 
             if ( stErr == noErr )
             {
@@ -162,27 +163,33 @@ bool installPrivilegedHelperTool()
         CFRelease(currentHelperToolURL);
         CFRelease(currentInfoPlist);
         CFRelease(installedInfoPlist);
-        CFRelease(installedHelperJobData);
+        CFRelease(installedPath);
     }
 
+    HelperToolResult res = HT_INSTALL_NO_NEEDED;
 
-    // When the PrivilegedHelper is not installed, we proceed to install it, using the blessHelperWithLabel function
     if (needToInstall)
     {
+        qInfo() << "Installing the privileged helper tool" ;
         if (!blessHelperWithLabel(CFSTR(kPRIVILEGED_HELPER_LABEL), &error))
         {
-            CFStringRef cfErrDescription = CFErrorCopyDescription(error);
-            const char *szErrDesc = CFStringGetCStringPtr(cfErrDescription, CFStringGetSystemEncoding());
-            qCritical() << "Failed to install privileged helper: " << szErrDesc;
-            return false;
+            qDebug() << error;
+            if(error){
+                CFStringRef cfErrDescription = CFErrorCopyDescription(error);
+                const char *szErrDesc = CFStringGetCStringPtr(cfErrDescription, CFStringGetSystemEncoding());
+                qCritical() << "Failed to install privileged helper: " << szErrDesc;
+            }
+            res = HT_INSTALL_FAILED;
         }
-        else
+        else {
             qInfo() << "Privileged helper installed.";
+            res = HT_INSTALL_DONE;
+        }
     }
     else
         qInfo() << "Privileged helper already available, not installing.";
 
-    return true;
+    return res;
 }
 
 // This function was adapted from https://github.com/Tunnelblick/Tunnelblick/

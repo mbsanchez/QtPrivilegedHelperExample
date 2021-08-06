@@ -42,7 +42,8 @@ MainWindow::~MainWindow()
 
 void MainWindow::on_m_bnInstallHelper_clicked()
 {
-    if (installPrivilegedHelperTool())
+    HelperToolResult res = installPrivilegedHelperTool();
+    if (res != HT_INSTALL_FAILED)
         QMessageBox::information(this, "Success!", "PrivilegedHelper tool installed successfully!\n");
     else
         QMessageBox::critical(this, "Failure :(", "PrivilegedHelper tool not installed");

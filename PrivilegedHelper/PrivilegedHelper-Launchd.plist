@@ -3,22 +3,13 @@
 <plist version="1.0">
 <dict>
 	<key>Label</key>
-        <string>com.mbs.PrivilegedHelper</string>
-        <key>StandardErrorPath</key>
-        <string>/var/log/com.mbs.priviledhelper.log</string>
-	<key>Sockets</key>
+	<string>com.mbs.PrivilegedHelper</string>
+	<key>MachServices</key>
 	<dict>
-                <key>com.mbs.PrivilegedHelper</key>
-		<dict>
-			<key>SockFamily</key>
-			<string>Unix</string>
-			<key>SockPathMode</key>
-			<integer>438</integer>
-			<key>SockPathName</key>
-                        <string>/var/run/com.mbs.PrivilegedHelper.socket</string>
-			<key>SockType</key>
-			<string>Stream</string>
-		</dict>
+		<key>com.mbs.PrivilegedHelper</key>
+		<true/>
 	</dict>
+	<key>StandardErrorPath</key>
+	<string>/var/log/com.mbs.priviledhelper.log</string>
 </dict>
 </plist>
