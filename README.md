@@ -103,6 +103,12 @@ Qt Project Build and Run Settings
 
 ![Run Settings](https://raw.github.com/mbsanchez/QtPrivilegedHelperExample/master/images/RunSettings.png)
 
+Show PrivilegedHelper Log
+--------------------
+
+    log show --predicate 'subsystem == "com.mbs.PrivilegedHelper"' --info --debug
+    syslog | grep Hello
+
 Issues
 ------
 

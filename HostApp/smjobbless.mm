@@ -46,6 +46,7 @@
 #include <sys/types.h>
 #include <sys/un.h>
 
+static xpc_connection_t connection;
 
 // this function was adapted from the SMJobBless example
 bool blessHelperWithLabel(CFStringRef label, CFErrorRef* error)
@@ -195,23 +196,8 @@ HelperToolResult installPrivilegedHelperTool()
 // This function was adapted from https://github.com/Tunnelblick/Tunnelblick/
 // This functions send the command to the PrivilegedHelper using a unix socket,
 // then waits for a response
-int runExampleTool(char *szStdOutBuffer, char *szStdErrBuffer, int iBuffersSize) {
-    int sockfd;
-    int n;
-
+int runExampleTool() {
     char requestToServer[4096];
-    const char *socketPath = HELPER_SOCKET_PATH;
-    char *pOutMsg, *pErrMsg, *buf_ptr, *pNl;
-    char *p_szStatus, *p_szOutLen, *p_szErrLen;
-    int status, stdOutLen, stdErrLen;
-    size_t bytes_to_write, offset=0, mbytes=4096;
-    time_t tm1, tm2;
-    useconds_t sleepTimeMicroseconds;
-    bool foundZeroByte;
-
-#define SOCKET_BUF_SIZE 1024
-    char buffer[SOCKET_BUF_SIZE];
-    struct sockaddr_un socket_data;
 
     // Get the base app url
     CFURLRef appBasePathUrl = CFBundleCopyBundleURL(CFBundleGetMainBundle());
@@ -219,151 +205,55 @@ int runExampleTool(char *szStdOutBuffer, char *szStdErrBuffer, int iBuffersSize)
     const char *cStrAppBasePath = CFStringGetCStringPtr(appBasePath, CFStringGetSystemEncoding());
 
     // Create the resquest command
-    snprintf(requestToServer, 4096, "%s%s%s\n", COMMAND_HEADER_C, kExecuteToolCommand, cStrAppBasePath);
+    snprintf(requestToServer, 4096, "%s%s%s", COMMAND_HEADER_C, kExecuteToolCommand, cStrAppBasePath);
     requestToServer[4096-1] = 0;
 
     // Release the base url and path
     CFRelease(appBasePathUrl);
     CFRelease(appBasePath);
 
-    // Create a Unix domain socket as a stream
-    sockfd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (  sockfd < 0  ) {
-        qCritical() << "runExampleTool: Error creating Unix domain socket; errno = "
-                    << errno << "; error was '" << strerror(errno) << "'";
-        goto error2;
+    xpc_object_t message = xpc_dictionary_create(NULL, NULL, 0);
+    xpc_dictionary_set_string(message, "cmd", requestToServer);
+
+    qCritical() << "Sending request:" << message;
+
+    xpc_connection_send_message_with_reply(connection, message, dispatch_get_main_queue(), ^(xpc_object_t event) {
+        const char* response = xpc_dictionary_get_string(event, "reply");
+        qInfo() << "Received response:" << response;
+    });
+
+    return 0;
+}
+
+void initConnection()
+{
+    connection = xpc_connection_create_mach_service(kPRIVILEGED_HELPER_LABEL, NULL, XPC_CONNECTION_MACH_SERVICE_PRIVILEGED);
+
+    if (!connection) {
+        qCritical() << "Failed to create XPC connection.";
+        return;
     }
 
-    // Connect to the PrivilegedHelper server's socket
-    bzero((char *) &socket_data, sizeof(socket_data));
-    socket_data.sun_len    = sizeof(socket_data);
-    socket_data.sun_family = AF_UNIX;
-    if (  sizeof(socket_data.sun_path) <= strlen(socketPath)  ) {
-        qCritical() << "runExampleTool: socketPath is "
-                    << strlen(socketPath) << " bytes long but there is only room for "
-                    << sizeof(socket_data.sun_path) << " bytes in socket_data.sun_path";
-        goto error1;
-    }
-    memmove((char *)&socket_data.sun_path, (char *)socketPath, strlen(socketPath));
-    if (  connect(sockfd, (struct sockaddr *)&socket_data, sizeof(socket_data)  ) < 0) {
-       qCritical() << "PrivilegedHelper: Error connecting to PrivilegedHelper server socket; errno = "
-                   << errno << "; error was '" << strerror(errno) << "'";
-        goto error1;
-    }
+    xpc_connection_set_event_handler(connection, ^(xpc_object_t event) {
+        xpc_type_t type = xpc_get_type(event);
 
-    // Send our request to the socket
-    buf_ptr = (char*)requestToServer;
-    bytes_to_write = strlen(requestToServer);
-    while (  bytes_to_write != 0  ) {
-        n = write(sockfd, buf_ptr, bytes_to_write);
-        if (  n < 0  ) {
-           qCritical() << "runExampleTool: Error writing to PrivilegedHelper server socket; errno = "
-                       << errno << "; error was '" << strerror(errno) << "'";
-            goto error1;
-        }
+        if (type == XPC_TYPE_ERROR) {
 
-        buf_ptr += n;
-        bytes_to_write -= n;
-    }
+            if (event == XPC_ERROR_CONNECTION_INTERRUPTED) {
+                qCritical() << "XPC connection interupted.";
 
-    // Receive from the socket until we receive a \0
-    // Must receive all data within 30 seconds or we assume PrivilegedHelper is not responding properly and abort
+            } else if (event == XPC_ERROR_CONNECTION_INVALID) {
+                qCritical() << "XPC connection invalid, releasing.";
+                xpc_release(connection);
 
-    // Set the socket to use non-blocking I/O (but we've already done the output, so we're really just doing non-blocking input)
-    if (  -1 == fcntl(sockfd, F_SETFL,  O_NONBLOCK)  ) {
-        qCritical() << "runExampleTool: Error from fcntl(sockfd, F_SETFL,  O_NONBLOCK) with PrivilegedHelper server socket; errno = "
-                    << errno << "; error was '" << strerror(errno) << "'";
-        goto error1;
-    }
-
-    char output[4096];
-
-    foundZeroByte = false;
-    offset=0;
-    mbytes=4096;
-    tm1 = time(NULL);
-    tm2 = tm1;
-    sleepTimeMicroseconds = 10000;	// First sleep is 0.10 seconds; each sleep thereafter will be doubled, up to 5.0 seconds
-
-    memset(output, 0, 4096);
-    while (  tm2-tm1 < 30  ) {
-        bzero((char *)buffer, SOCKET_BUF_SIZE);
-        n = read(sockfd, (char *)buffer, SOCKET_BUF_SIZE - 1);
-        time(&tm2);
-        if (   (n == -1)
-            && (errno == EAGAIN)  ) {
-            sleepTimeMicroseconds *= 2;
-            if (  sleepTimeMicroseconds > 5000000  ) {
-                sleepTimeMicroseconds = 5000000;
-                qInfo() << "runExampleTool: no data available from PrivilegedHelper socket; sleeping "
-                        << ((float)sleepTimeMicroseconds)/1000000.0 << "seconds...";
+            } else {
+                qCritical() << "Unexpected XPC connection error.";
             }
-            usleep(sleepTimeMicroseconds);
-            continue;
-        } else if (  n < 0  ) {
-            qCritical() << "runExampleTool: Error reading from PrivilegedHelper socket; errno = "
-                        << errno << "; error was '" << strerror(errno) << "'";
-            goto error1;
+
+        } else {
+            qCritical() << "Unexpected XPC connection event.";
         }
-        buffer[n] = '\0';
-        if(n+offset<4096){
-            snprintf(output+offset, mbytes-1, "%s", buffer);
-            offset = strlen(output); mbytes = 4096 - offset;
-        }
-        if (  strchr(buffer, '\0') != (buffer + n)  ) {
-            if (  strchr(buffer, '\0') != (buffer + n - 1)  ) {
-                qCritical() << "runExampleTool: Data from PrivilegedHelper after the zero byte that should terminate the data";
-                goto error1;
-            }
-            foundZeroByte = true;
-            break;
-        }
-    }
+    });
 
-    shutdown(sockfd, SHUT_RDWR);
-    close(sockfd);
-
-    if (  ! foundZeroByte  ) {
-        qCritical() <<  "runExampleTool: PrivilegedHelper is not responding; received only " << strlen(output) <<" bytes";
-        goto error2;
-    }
-
-    pNl = strchr(output, '\n');
-    if (  pNl == NULL  ) {
-        qCritical() << "Invalid output from PrivilegedHelper: no newline; full output = '"<< output << "'";
-        goto error2;
-    }
-    *pNl = 0; // remove the end line
-    p_szStatus = output;
-    p_szOutLen = strchr(output, ' ');
-    p_szErrLen = (p_szOutLen == NULL)?NULL:strchr(p_szOutLen+1, ' ');
-    if (  p_szErrLen == NULL || strlen(p_szErrLen)<=1) {
-        qCritical() << "Invalid output from PrivilegedHelper: header line does not have three components; full output = '" << output << "'";
-        goto error2;
-    }
-    *p_szOutLen = 0; p_szOutLen++;
-    *p_szErrLen = 0; p_szErrLen++;
-    status = atoi(p_szStatus);
-    stdOutLen = atoi(p_szOutLen);
-    stdErrLen = atoi(p_szErrLen);
-    pOutMsg = pNl+1;
-    pErrMsg=pOutMsg+stdOutLen;
-
-    *pErrMsg = 0; pErrMsg++; *(pErrMsg+stdErrLen)=0;
-
-    if (  szStdOutBuffer ) {
-        snprintf(szStdOutBuffer, iBuffersSize, "%s", pOutMsg);
-    }
-    if (  szStdErrBuffer ) {
-        snprintf(szStdErrBuffer, iBuffersSize, "%s", pErrMsg);
-    }
-
-    return status;
-
-error1:
-    shutdown(sockfd, SHUT_RDWR);
-    close(sockfd);
-
-error2:
-    return -1;
+    xpc_connection_resume(connection);
 }

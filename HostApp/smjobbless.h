@@ -27,12 +27,14 @@
 
 #include <CoreFoundation/CFString.h>
 #include <CoreFoundation/CFError.h>
+#include <xpc/xpc.h>
 
 enum HelperToolResult { HT_INSTALL_FAILED, HT_INSTALL_NO_NEEDED, HT_INSTALL_DONE};
 
 bool blessHelperWithLabel(CFStringRef label, CFErrorRef* error);
 HelperToolResult installPrivilegedHelperTool();
-int runExampleTool(char *szStdOutBuffer, char *szStdErrBuffer, int iBuffersSize);
+int runExampleTool();
+void initConnection();
 
 #endif // SMJOBBLESS
 

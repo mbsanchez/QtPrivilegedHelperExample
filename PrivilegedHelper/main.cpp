@@ -60,6 +60,7 @@
 #define PREVIOUS_LOG_PATH_C     "/var/log/com.mbs.priviledhelper.previous.log"
 
 static bool sigtermReceived = false;
+static os_log_t logger = os_log_create("com.mbs.PrivilegedHelper", "Daemon");
 
 static void signal_handler(int signalNumber) {
 
@@ -85,6 +86,7 @@ bool checkSignature(const char* appPath){
 
     char* valCodeSignCmd = 0;
     // asprintf allocates & never overflows
+    os_log_info(logger, "Checking signature of: %{public}s", appPath);
     if (asprintf(&valCodeSignCmd, "codesign -v -R=\"certificate leaf[subject.CN] = \\\"%s\\\" and anchor apple generic\" \"%s\"", kSigningCertCommonName, appPath) != -1)
     {
         if (system(valCodeSignCmd) != 0)
@@ -106,6 +108,7 @@ bool isValidSignature(const char *hostAppPath){
 
     snprintf(toolPath, 4096, "%s/Contents/Resources/%s", hostAppPath, kToolRightName);
     toolPath[4096-1] = 0;
+    os_log_info(logger, "Tool Path: %{public}s", toolPath);
 
     return checkSignature(hostAppPath) && checkSignature(toolPath);
 }
@@ -114,8 +117,11 @@ bool isValidSignature(const char *hostAppPath){
 int runTool(const char *hostBasePath, char **stdoutString, char **stderrString){
 
     // Checks for valid signature on HostApp and ExampleTool
-    if(!isValidSignature(hostBasePath))
+    if(!isValidSignature(hostBasePath)) {
+        *stdoutString = strdup("");
+        *stderrString = strdup("Signature check error");
         return -1;
+    }
 
     std::vector<char*> params;
     char toolPath[4096];
@@ -146,8 +152,6 @@ int runTool(const char *hostBasePath, char **stdoutString, char **stderrString){
     return 0;
 }
 
-static os_log_t logger = os_log_create("com.mbs.PrivilegedHelper", "Daemon");
-
 static void __XPC_Peer_Event_Handler(xpc_connection_t connection, xpc_object_t event) {
     UNUSED(connection)
     os_log_info(logger, "Received event in helper.");
@@ -173,10 +177,10 @@ static void __XPC_Peer_Event_Handler(xpc_connection_t connection, xpc_object_t e
 
         buffer = xpc_dictionary_get_string(event, "cmd");
 
-        os_log_info(logger, "Command received: %s", buffer);
+        os_log_info(logger, "Command received: %{public}s", buffer);
         // Ignore request unless it starts with a valid header and is terminated by a \n
         if (  0 != strncmp(buffer, command_header, strlen(command_header))  ) {
-            os_log_error(logger, "Received %lu bytes from client but did it did not start with a valid header; received '%s'", (unsigned long)strlen(buffer), buffer);
+            os_log_error(logger, "Received %lu bytes from client but did it did not start with a valid header; received '%{public}s'", (unsigned long)strlen(buffer), buffer);
             return; // this isn't fatal
         }
 
@@ -189,15 +193,12 @@ static void __XPC_Peer_Event_Handler(xpc_connection_t connection, xpc_object_t e
         char *stderrString = NULL;
         char socketStream[1024];
 
-        os_log_info(logger, "HostApp Path: %s", hostBasePath);
+        os_log_info(logger, "HostApp Path: '%{public}s'", hostBasePath);
 
         // Run the ExampleTool
         status = runTool(hostBasePath, &stdoutString, &stderrString);
 
-        if (status != 0) {
-            // Log the status from executing the command
-            os_log_info(logger, "Status = %ld from ExampleTool command '%s'", (long) status, hostBasePath);
-        }
+        os_log_info(logger, "Status = %ld from ExampleTool command '%{public}s'", (long) status, hostBasePath);
 
         xpc_object_t reply = xpc_dictionary_create_reply(event);
         snprintf(socketStream, 1024, "%ld %lu %lu\n%s%s%c", (long)status, (unsigned long)strlen(stdoutString),
@@ -226,6 +227,7 @@ int main(int argc, const char *argv[]) {
     UNUSED(argv)
 
     // Make sure we are root:wheel
+    os_log_info(logger, "Starting the helper application");
     if ((getuid() != 0) || (getgid() != 0) || (geteuid() != 0) || (getegid() != 0)) {
         os_log_error(logger, "Not root:wheel; our uid = %lu; our euid = %lu; our gid = %lu; our egid = %lu",
                      (unsigned long)getuid(), (unsigned long)geteuid(), (unsigned long)getgid(), (unsigned long)getegid());

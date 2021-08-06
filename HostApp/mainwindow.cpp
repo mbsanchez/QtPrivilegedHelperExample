@@ -43,16 +43,14 @@ MainWindow::~MainWindow()
 void MainWindow::on_m_bnInstallHelper_clicked()
 {
     HelperToolResult res = installPrivilegedHelperTool();
-    if (res != HT_INSTALL_FAILED)
+    if (res != HT_INSTALL_FAILED) {
         QMessageBox::information(this, "Success!", "PrivilegedHelper tool installed successfully!\n");
-    else
+        initConnection();
+    }else
         QMessageBox::critical(this, "Failure :(", "PrivilegedHelper tool not installed");
 }
 
 void MainWindow::on_m_bnCallHelper_clicked()
 {
-    if(runExampleTool(NULL,NULL, 0)==0)
-        QMessageBox::information(this, "Success!", "ExampleTool executed successfully!\n");
-    else
-        QMessageBox::critical(this, "Failure :(", " Error Executing the ExampleTool");
+    runExampleTool();
 }
