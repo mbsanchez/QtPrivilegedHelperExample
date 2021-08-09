@@ -22,7 +22,7 @@
 # or see http://www.gnu.org/licenses/.
 # -----------------------------------------------------------------------------------
 
-QT += core
+QT -= core
 QT -= gui
 
 TARGET = com.mbs.ExampleTool

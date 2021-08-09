@@ -22,7 +22,7 @@
 // or see http://www.gnu.org/licenses/.
 // -----------------------------------------------------------------------------------
 
-#include <QCoreApplication>
+#include <vector>
 #include <arpa/inet.h>
 #include <os/log.h>
 #include <errno.h>

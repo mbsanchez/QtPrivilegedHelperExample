@@ -22,16 +22,17 @@
 // or see http://www.gnu.org/licenses/.
 // -----------------------------------------------------------------------------------
 
-#include <QCoreApplication>
 #include <syslog.h>
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 
+#define UNUSED(expr) do { (void)(expr); } while (0);
+
 int main(int argc, char *argv[])
 {
-    Q_UNUSED(argc)
-    Q_UNUSED(argv)
+    UNUSED(argc)
+    UNUSED(argv)
 
     syslog(LOG_NOTICE, "Hello world! uid = %d, euid = %d, pid = %d\n", (int) getuid(), (int) geteuid(), (int) getpid());
 
